@@ -7,7 +7,7 @@ from typing import Any, Literal
 from zoneinfo import ZoneInfo
 
 from dotenv import load_dotenv
-from langchain_core.messages import AIMessage, SystemMessage, ToolMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_groq import ChatGroq
 
 from app.agent.state import AgentState
@@ -91,11 +91,42 @@ def _latest_ai_tool_calls(messages: list) -> list[dict[str, Any]]:
     return []
 
 
+def _compact_runtime_messages(messages: list) -> list:
+    latest_human_idx: int | None = None
+    latest_ai_idx: int | None = None
+
+    for idx in range(len(messages) - 1, -1, -1):
+        msg = messages[idx]
+        if latest_human_idx is None and isinstance(msg, HumanMessage):
+            latest_human_idx = idx
+        if latest_ai_idx is None and isinstance(msg, AIMessage):
+            latest_ai_idx = idx
+        if latest_human_idx is not None and latest_ai_idx is not None:
+            break
+
+    selected_indices: list[int] = []
+
+    if latest_ai_idx is not None:
+        selected_indices.append(latest_ai_idx)
+        for idx in range(latest_ai_idx + 1, len(messages)):
+            if isinstance(messages[idx], ToolMessage):
+                selected_indices.append(idx)
+                continue
+            break
+
+    if latest_human_idx is not None:
+        selected_indices.append(latest_human_idx)
+
+    selected_indices = sorted(set(selected_indices))
+    return [messages[idx] for idx in selected_indices]
+
+
 @langsmith_traceable(name="assistant", run_type="chain")
 @timed("assistant")
 def assistant(state: AgentState) -> AgentState:
     messages = state.get("messages", [])
-    response = LLM_WITH_TOOLS.invoke([SystemMessage(content=_assistant_system_prompt()), *messages])
+    runtime_messages = _compact_runtime_messages(messages)
+    response = LLM_WITH_TOOLS.invoke([SystemMessage(content=_assistant_system_prompt()), *runtime_messages])
 
     updates: AgentState = {
         "messages": [response],
