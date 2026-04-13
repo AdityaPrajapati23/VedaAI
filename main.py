@@ -3,6 +3,7 @@ import uuid
 
 from dotenv import load_dotenv
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import uvicorn
 
@@ -71,10 +72,19 @@ config = {"configurable": {"thread_id": thread_id}}
 # -----------------------------
 # FastAPI Setup
 # -----------------------------
-app_api = FastAPI()
+# Ensure frontend directory exists
+frontend_path = os.path.join(os.path.dirname(__file__), "frontend")
+if not os.path.exists(frontend_path):
+    os.makedirs(frontend_path, exist_ok=True)
 
-from fastapi.middleware.cors import CORSMiddleware
+# Create FastAPI app
+app_api = FastAPI(
+    title="VedaAI - Local AI Assistant",
+    description="API for VedaAI local AI assistant",
+    version="1.0.0"
+)
 
+# Add CORS middleware
 app_api.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -86,6 +96,13 @@ app_api.add_middleware(
 
 class Message(BaseModel):
     text: str
+
+
+# Health check endpoint
+@app_api.get("/api/health")
+def health_check():
+    """Health check endpoint to verify API is running"""
+    return {"status": "ok", "service": "VedaAI - Local AI Assistant"}
 
 
 @app_api.post("/chat")
@@ -146,9 +163,17 @@ def run_chat() -> None:
         print(f"\nAgent:\n{output}")
 
 
+# Mount static files (frontend) at the end, after all API routes
+# This serves index.html for all unmatched routes (SPA routing)
+if os.path.exists(frontend_path):
+    app_api.mount("/", StaticFiles(directory=frontend_path, html=True), name="frontend")
+
+
 # -----------------------------
 # Main Entry
 # -----------------------------
 if __name__ == "__main__":
     print("Starting FastAPI server at http://127.0.0.1:8000")
+    print("VedaAI - Local AI Assistant")
+    print("Open browser: http://127.0.0.1:8000")
     uvicorn.run(app_api, host="127.0.0.1", port=8000)
