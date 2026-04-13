@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html>
+      <h1>CORTEX AI</h1>
+<head>
+   
+    <title>Local AI Agent</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="container">
+    
+    <!-- Sidebar -->
+    <div class="sidebar">
+        <button class="new-chat" onclick="newChat()">+ New Chat</button>
+        <div id="chat-list"></div>
+    </div>
+
+    <!-- Chat -->
+    <div class="chat-area">
+        <div id="chat-box" class="chat-box"></div>
+
+        <div class="input-area">
+            <input type="text" id="user-input" placeholder="Send a message..." onkeypress="handleKey(event)">
+            <button onclick="sendMessage()">Send</button>
+        </div>
+    </div>
+</div>
+
+<script src="script.js"></script>
+</body>
+</html>
