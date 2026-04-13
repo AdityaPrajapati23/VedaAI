@@ -12,3 +12,8 @@ ddgs>=9.6.1
 feedparser>=6.0.12
 streamlit>=1.43.0
 python-telegram-bot>=21.10
+fastapi
+uvicorn
+python-dotenv
+langchain
+langchain-core
