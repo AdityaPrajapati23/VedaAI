@@ -13,7 +13,7 @@
 // ========================================
 // Configuration
 // ========================================
-const API_ENDPOINT = "http://127.0.0.1:8000/chat";
+const API_ENDPOINT = "/chat";
 const STORAGE_KEY = "vedaai_chats";
 const ACTIVE_CHAT_KEY = "vedaai_active_chat";
 const MAX_RETRIES = 3;
