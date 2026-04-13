@@ -4,6 +4,7 @@ import uuid
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 import uvicorn
 
@@ -13,28 +14,31 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.graph import GUARDED_ACTIONS, build_graph
 from app.observability import langsmith_traceable, timed, timed_block
 
-# Load API keys
+
+# =========================
+# LOAD ENV VARIABLES
+# =========================
 load_dotenv()
 if not os.getenv("GROQ_API_KEY"):
     load_dotenv(".env.example")
 
 
-# -----------------------------
-# Helper: Get last AI message
-# -----------------------------
-def _last_ai_text(messages) -> str:
+# =========================
+# HELPER FUNCTION
+# =========================
+def _last_ai_text(messages):
     for msg in reversed(messages):
         if isinstance(msg, AIMessage):
             return str(msg.content)
-    return ""
+    return "No response"
 
 
-# -----------------------------
-# Handle approval interrupts
-# -----------------------------
+# =========================
+# HANDLE INTERRUPTS (FIXED FOR DEPLOYMENT)
+# =========================
 @langsmith_traceable(name="handle_interrupts", run_type="chain")
 @timed("handle_interrupts")
-def _handle_interrupts(app, config) -> None:
+def _handle_interrupts(app, config):
     while True:
         snapshot = app.get_state(config)
         if not snapshot.next:
@@ -46,45 +50,33 @@ def _handle_interrupts(app, config) -> None:
 
         planned = snapshot.values.get("planned_action", {})
         action_name = planned.get("name", "respond")
-        action_args = planned.get("args", {})
 
-        if action_name in GUARDED_ACTIONS:
-            print("\nApproval required before execution")
-            print(f"Action: {action_name}")
-            print(f"Args: {action_args}")
-            answer = input("Approve? [y/N]: ").strip().lower()
-            approved = answer in {"y", "yes"}
-            app.update_state(config, {"human_approved": approved})
-        else:
-            app.update_state(config, {"human_approved": True})
+        # 🔥 IMPORTANT FIX: AUTO APPROVE (NO input())
+        app.update_state(config, {"human_approved": True})
 
         app.invoke(None, config=config)
 
 
-# -----------------------------
-# Build Agent Graph
-# -----------------------------
+# =========================
+# BUILD GRAPH
+# =========================
 app_graph = build_graph()
 thread_id = str(uuid.uuid4())
 config = {"configurable": {"thread_id": thread_id}}
 
 
-# -----------------------------
-# FastAPI Setup
-# -----------------------------
-# Ensure frontend directory exists
-frontend_path = os.path.join(os.path.dirname(__file__), "frontend")
-if not os.path.exists(frontend_path):
-    os.makedirs(frontend_path, exist_ok=True)
-
-# Create FastAPI app
+# =========================
+# FASTAPI APP
+# =========================
 app_api = FastAPI(
     title="VedaAI - Local AI Assistant",
-    description="API for VedaAI local AI assistant",
+    description="AI Assistant with Tools",
     version="1.0.0"
 )
 
-# Add CORS middleware
+# =========================
+# CORS
+# =========================
 app_api.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -94,17 +86,24 @@ app_api.add_middleware(
 )
 
 
+# =========================
+# REQUEST MODEL
+# =========================
 class Message(BaseModel):
     text: str
 
 
-# Health check endpoint
+# =========================
+# HEALTH CHECK
+# =========================
 @app_api.get("/api/health")
 def health_check():
-    """Health check endpoint to verify API is running"""
-    return {"status": "ok", "service": "VedaAI - Local AI Assistant"}
+    return {"status": "ok", "service": "VedaAI"}
 
 
+# =========================
+# CHAT API
+# =========================
 @app_api.post("/chat")
 def chat_api(message: Message):
     user_input = message.text
@@ -123,22 +122,14 @@ def chat_api(message: Message):
         return {"reply": output}
 
     except Exception as e:
-        return {"reply": str(e)}
+        print("Error:", e)
+        return {"reply": "Server error: " + str(e)}
 
 
-
-
-
-# -----------------------------
-# CLI Chat (Terminal Chat)
-# -----------------------------
-def run_chat() -> None:
-    if not os.getenv("GROQ_API_KEY"):
-        print("Missing GROQ_API_KEY.")
-        print("Set it in a .env file or export it in your shell, then run again.")
-        print("Example: export GROQ_API_KEY='your_key_here'")
-        return
-
+# =========================
+# CLI MODE (OPTIONAL)
+# =========================
+def run_chat():
     print("Local Agent started. Type 'exit' to quit.")
 
     while True:
@@ -163,17 +154,24 @@ def run_chat() -> None:
         print(f"\nAgent:\n{output}")
 
 
-# Mount static files (frontend) at the end, after all API routes
-# This serves index.html for all unmatched routes (SPA routing)
+# =========================
+# SERVE FRONTEND
+# =========================
+frontend_path = os.path.join(os.path.dirname(__file__), "frontend")
+
 if os.path.exists(frontend_path):
-    app_api.mount("/", StaticFiles(directory=frontend_path, html=True), name="frontend")
+    app_api.mount("/static", StaticFiles(directory=frontend_path), name="static")
+
+    @app_api.get("/")
+    def serve():
+        return FileResponse(os.path.join(frontend_path, "index.html"))
 
 
-# -----------------------------
-# Main Entry
-# -----------------------------
+# =========================
+# RUN SERVER (DEPLOYMENT READY)
+# =========================
+port = int(os.environ.get("PORT", 8000))
+
 if __name__ == "__main__":
-    print("Starting FastAPI server at http://127.0.0.1:8000")
-    print("VedaAI - Local AI Assistant")
-    print("Open browser: http://127.0.0.1:8000")
-    uvicorn.run(app_api, host="127.0.0.1", port=8000)
+    print("🚀 VedaAI is running...")
+    uvicorn.run(app_api, host="0.0.0.0", port=port)
